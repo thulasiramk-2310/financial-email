@@ -1,0 +1,96 @@
+name: financial-email-risk-env
+version: 1.0.0
+description: >-
+  Deterministic, task-aware OpenEnv environment for financial email triage with
+  dynamic trust modeling, risk biasing, and cost-sensitive decision rewards.
+runtime: python
+entrypoint: server.app:app
+environment:
+  module: server.environment
+  class: FinancialEmailEnv
+endpoints:
+  - path: /reset
+    method: POST
+    description: Reset environment for selected task and return first observation.
+  - path: /step
+    method: POST
+    description: Execute action and return observation, reward, done, and info.
+  - path: /state
+    method: GET
+    description: Return current internal state.
+  - path: /tasks
+    method: GET
+    description: Return easy/medium/hard task definitions.
+  - path: /grader
+    method: GET
+    description: Return deterministic score, breakdown, and operational metrics.
+  - path: /baseline
+    method: GET
+    description: Run baseline policy across all tasks.
+action_schema:
+  type: object
+  required: [action_type]
+  properties:
+    action_type:
+      type: string
+      enum: [classify, assign_risk, decide]
+    classification:
+      type: string
+      enum: [spam, finance, urgent]
+    risk_level:
+      type: string
+      enum: [low, medium, high]
+    decision:
+      type: string
+      enum: [approve, reject, escalate]
+observation_schema:
+  type: object
+  properties:
+    current_email:
+      type: object
+      nullable: true
+    trust_score:
+      type: number
+      minimum: 0.0
+      maximum: 1.0
+    step_count:
+      type: integer
+      minimum: 0
+    task_name:
+      type: string
+      enum: [easy, medium, hard]
+state_schema:
+  type: object
+  properties:
+    emails:
+      type: array
+      items: { type: object }
+    current_index:
+      type: integer
+      minimum: 0
+    trust_scores:
+      type: object
+      additionalProperties: { type: number }
+    total_reward:
+      type: number
+    done:
+      type: boolean
+grader_output:
+  type: object
+  properties:
+    score:
+      type: number
+      minimum: 0.0
+      maximum: 1.0
+    breakdown:
+      type: object
+      properties:
+        classification: { type: number }
+        risk: { type: number }
+        decision: { type: number }
+    metrics:
+      type: object
+      properties:
+        false_positives: { type: integer }
+        false_negatives: { type: integer }
+        escalations: { type: integer }
