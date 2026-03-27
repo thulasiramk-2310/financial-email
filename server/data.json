@@ -1,0 +1,112 @@
+{
+  "emails": [
+    {
+      "id": 1,
+      "subject": "Urgent: Payroll account verification needed",
+      "sender": "payroll-help@corp-payroll-secure.com",
+      "content": "Click the secure link and verify salary account details before end of day.",
+      "true_label": "spam",
+      "true_risk": "high",
+      "correct_decision": "reject"
+    },
+    {
+      "id": 2,
+      "subject": "Quarterly liquidity report draft",
+      "sender": "analyst@operations.bank",
+      "content": "Please review the attached liquidity schedule and send comments by Friday.",
+      "true_label": "finance",
+      "true_risk": "low",
+      "correct_decision": "approve"
+    },
+    {
+      "id": 3,
+      "subject": "Immediate vendor remittance confirmation",
+      "sender": "ceo-desk@external-holdings.net",
+      "content": "Wire transfer confirmation required within one hour for a strategic payment.",
+      "true_label": "urgent",
+      "true_risk": "high",
+      "correct_decision": "escalate"
+    },
+    {
+      "id": 4,
+      "subject": "Updated SWIFT instructions",
+      "sender": "treasury.partner@trustedbank.com",
+      "content": "New SWIFT routing details for recurring settlement are attached for validation.",
+      "true_label": "finance",
+      "true_risk": "medium",
+      "correct_decision": "escalate"
+    },
+    {
+      "id": 5,
+      "subject": "Card dispute packet",
+      "sender": "ops-queue@operations.bank",
+      "content": "Customer dispute packet requires normal review in tomorrow's cycle.",
+      "true_label": "finance",
+      "true_risk": "low",
+      "correct_decision": "approve"
+    },
+    {
+      "id": 6,
+      "subject": "Urgent compliance exception request",
+      "sender": "compliance-audit@operations.bank",
+      "content": "Potential AML mismatch detected in one inbound transaction, please triage quickly.",
+      "true_label": "urgent",
+      "true_risk": "medium",
+      "correct_decision": "escalate"
+    },
+    {
+      "id": 7,
+      "subject": "Invoice follow-up",
+      "sender": "finance-team@partner-payables.io",
+      "content": "Reminder to release payment for attached invoice reference 88712.",
+      "true_label": "spam",
+      "true_risk": "medium",
+      "correct_decision": "reject"
+    },
+    {
+      "id": 8,
+      "subject": "Payment batch summary",
+      "sender": "controller@operations.bank",
+      "content": "Daily ACH payment summary for reconciliation is attached.",
+      "true_label": "finance",
+      "true_risk": "low",
+      "correct_decision": "approve"
+    },
+    {
+      "id": 9,
+      "subject": "Action required: board travel wire",
+      "sender": "executive.office@lookalike-corp.co",
+      "content": "Approve urgent wire for board travel vendor before banking cutoff.",
+      "true_label": "spam",
+      "true_risk": "high",
+      "correct_decision": "reject"
+    },
+    {
+      "id": 10,
+      "subject": "Please confirm beneficiary format",
+      "sender": "settlement@trustedbank.com",
+      "content": "Beneficiary naming format changed slightly; confirmation requested before next cycle.",
+      "true_label": "finance",
+      "true_risk": "medium",
+      "correct_decision": "escalate"
+    },
+    {
+      "id": 11,
+      "subject": "Market update and FX exposure note",
+      "sender": "research@operations.bank",
+      "content": "Weekly FX exposure commentary for treasury planning.",
+      "true_label": "finance",
+      "true_risk": "low",
+      "correct_decision": "approve"
+    },
+    {
+      "id": 12,
+      "subject": "Urgent meeting materials",
+      "sender": "assistants.pool@operations.bank",
+      "content": "Slides are attached for the risk committee meeting in 15 minutes.",
+      "true_label": "urgent",
+      "true_risk": "low",
+      "correct_decision": "approve"
+    }
+  ]
+}
