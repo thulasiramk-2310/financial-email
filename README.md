@@ -1,3 +1,13 @@
+---
+title: Financial Email Risk Environment
+emoji: 💰
+colorFrom: blue
+colorTo: purple
+sdk: docker
+app_file: server/app.py
+pinned: false
+---
+
 # Financial Email Risk Environment
 
 Financial Email Risk Environment is a deterministic OpenEnv-compatible FastAPI service for simulating financial email triage.
