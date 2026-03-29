@@ -19,7 +19,7 @@ app = FastAPI(
 )
 
 
-env = FinancialEmailEnv()
+env: Optional[FinancialEmailEnv] = None
 history: list[dict] = []
 initialized = False
 
@@ -47,6 +47,17 @@ class HealthResponse(BaseModel):
     status: str
 
 
+@app.get("/")
+def root():
+    return {"status": "running"}
+
+
+@app.on_event("startup")
+def startup():
+    global env
+    env = FinancialEmailEnv()
+
+
 def validate_action(action: Action) -> tuple[bool, Optional[str]]:
     if action.action_type == "assign_risk":
         if not action.classification or not action.risk_level:
@@ -62,6 +73,10 @@ def validate_action(action: Action) -> tuple[bool, Optional[str]]:
 @app.post("/reset", response_model=ResetResponse)
 def reset(payload: ResetRequest) -> ResetResponse:
     global initialized
+
+    if env is None:
+        raise HTTPException(status_code=500, detail="Environment not initialized")
+
     try:
         observation = env.reset(task_name=payload.task_name, step_limit=payload.step_limit)
     except ValueError as exc:
@@ -76,6 +91,9 @@ def reset(payload: ResetRequest) -> ResetResponse:
 def step(payload: Union[StepRequest, Action] = Body(...)) -> StepResult:
     if not initialized:
         raise HTTPException(status_code=400, detail="Environment not initialized. Call /reset first.")
+
+    if env is None:
+        raise HTTPException(status_code=500, detail="Environment not initialized")
 
     action = payload.action if isinstance(payload, StepRequest) else payload
 
@@ -100,6 +118,7 @@ def step(payload: Union[StepRequest, Action] = Body(...)) -> StepResult:
     )
 
     observation_payload = observation.model_dump() if observation is not None else None
+
     return StepResult(
         observation=observation_payload,
         reward=reward,
@@ -112,6 +131,10 @@ def step(payload: Union[StepRequest, Action] = Body(...)) -> StepResult:
 def state() -> State:
     if not initialized:
         raise HTTPException(status_code=400, detail="Environment not initialized. Call /reset first.")
+
+    if env is None:
+        raise HTTPException(status_code=500, detail="Environment not initialized")
+
     return State.model_validate(env.state())
 
 
@@ -124,6 +147,10 @@ def tasks() -> list[dict]:
 def grader() -> GraderResponse:
     if not initialized:
         raise HTTPException(status_code=400, detail="Environment not initialized. Call /reset first.")
+
+    if env is None:
+        raise HTTPException(status_code=500, detail="Environment not initialized")
+
     result = grade(env.active_task, history)
     return GraderResponse(**result)
 
