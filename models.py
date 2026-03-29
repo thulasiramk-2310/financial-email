@@ -1,13 +1,13 @@
 from __future__ import annotations
-
 from typing import Any, Literal, Optional
-
 from pydantic import BaseModel, Field
-
 
 LabelType = Literal["spam", "finance", "urgent"]
 RiskType = Literal["low", "medium", "high"]
-DecisionType = Literal["approve", "reject", "escalate"]
+
+# Updated: block=spam/fraud, escalate=urgent+high, review=medium, pass=low risk routine
+DecisionType = Literal["block", "escalate", "review", "pass"]
+
 ActionType = Literal["classify", "assign_risk", "decide"]
 TaskName = Literal["easy", "medium", "hard"]
 Difficulty = Literal["easy", "medium", "hard"]
@@ -25,9 +25,9 @@ class Email(BaseModel):
 
 class Action(BaseModel):
     action_type: ActionType
-    classification: Optional[str] = None
-    risk_level: Optional[str] = None
-    decision: Optional[str] = None
+    classification: Optional[LabelType] = None
+    risk_level: Optional[RiskType] = None
+    decision: Optional[DecisionType] = None
 
 
 class Observation(BaseModel):
@@ -50,16 +50,18 @@ class TaskSpec(BaseModel):
     difficulty: Difficulty
     required_fields: list[str]
     description: str
+    examples: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class GradeResult(BaseModel):
     score: float = Field(..., ge=0.0, le=1.0)
     breakdown: dict[str, float]
     metrics: dict[str, int]
+    feedback: str = ""  # human-readable explanation of what went wrong
 
 
 class StepResult(BaseModel):
-    observation: Optional[Observation]
+    observation: Optional[Observation] = None
     reward: float
     done: bool
     info: dict[str, Any]
