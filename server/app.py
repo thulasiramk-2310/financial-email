@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import random
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -147,8 +147,10 @@ def list_tasks():
 
 
 @app.post("/reset", response_model=Observation, tags=["Environment"])
-def reset(req: ResetRequest):
+def reset(req: Optional[ResetRequest] = Body(default=None)):
     """Reset the environment and return the first observation."""
+    if req is None:
+        req = ResetRequest()
     emails = _build_emails(req.num_emails)
     env_state.clear()
     env_state.update({
