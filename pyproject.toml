@@ -14,7 +14,8 @@ authors = [{ name = "ram2310" }]
 dependencies = [
     "fastapi==0.116.1",
     "uvicorn[standard]==0.35.0",
-    "pydantic==2.11.7"
+    "pydantic==2.11.7",
+    "openenv-core>=0.2.0"
 ]
 
 [project.scripts]
