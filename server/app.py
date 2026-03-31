@@ -117,8 +117,10 @@ app.add_middleware(
 # Request schemas
 # ─────────────────────────────────────────────────────────────────────────────
 class ResetRequest(BaseModel):
-    task_name: TaskName = "easy"
+    task_name: TaskName = "hard"
     num_emails: int = 5
+
+    model_config = {"extra": "ignore"}  # ignore unknown fields from checker
 
 
 class StepRequest(BaseModel):
