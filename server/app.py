@@ -8,19 +8,19 @@ from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-# ── adjust import path when running inside server/ ───────────────────────────
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from models import (
-    Action, Email, Observation, State, StepResult,
-    LabelType, RiskType, DecisionType, TaskName,
+    Action, Email, Observation, StepResult,
+    TaskName,
 )
 from tasks import TASKS, TASK_REQUIRED_FIELDS
 from grader import grade
 
+
 # ─────────────────────────────────────────────────────────────────────────────
-# Sample email pool  (env randomly draws from these each episode)
+# Sample email pool
 # ─────────────────────────────────────────────────────────────────────────────
 SAMPLE_EMAILS: list[dict[str, Any]] = [
     {"subject": "You won a $1000 gift card!", "sender": "promo@spam.com",
@@ -43,7 +43,7 @@ SAMPLE_EMAILS: list[dict[str, Any]] = [
      "content": "Unauthorized login detected from a new device. Verify now.",
      "true_label": "urgent", "true_risk": "high", "correct_decision": "escalate"},
 
-    {"subject": "Loan Application #LN-8823 Approved", "sender": "loans@bank.com",
+    {"subject": "Loan Application Approved", "sender": "loans@bank.com",
      "content": "Your loan has been approved. Please review the terms.",
      "true_label": "finance", "true_risk": "medium", "correct_decision": "review"},
 
@@ -51,46 +51,44 @@ SAMPLE_EMAILS: list[dict[str, Any]] = [
      "content": "Guaranteed returns. Send $500 to get started.",
      "true_label": "spam", "true_risk": "high", "correct_decision": "block"},
 
-    {"subject": "Q1 Account Statement Ready", "sender": "noreply@bank.com",
+    {"subject": "Account Statement Ready", "sender": "noreply@bank.com",
      "content": "Your monthly statement is available for download.",
      "true_label": "finance", "true_risk": "low", "correct_decision": "pass"},
-
-    {"subject": "Wire Transfer of $47,500 Initiated", "sender": "alerts@bank.com",
-     "content": "A wire transfer to an overseas account was initiated. Confirm or deny.",
-     "true_label": "urgent", "true_risk": "high", "correct_decision": "escalate"},
-
-    {"subject": "KYC Re-submission Required", "sender": "compliance@bank.com",
-     "content": "Please re-submit your KYC documents within 7 days to avoid account freeze.",
-     "true_label": "finance", "true_risk": "medium", "correct_decision": "review"},
 ]
 
+
 # ─────────────────────────────────────────────────────────────────────────────
-# In-memory environment state
+# In-memory environment
 # ─────────────────────────────────────────────────────────────────────────────
 env_state: dict[str, Any] = {}
 
 
-def _build_emails(n: int = 5) -> list[Email]:
+def _build_emails(n: int = 5):
     pool = random.sample(SAMPLE_EMAILS, min(n, len(SAMPLE_EMAILS)))
     return [Email(id=i, **e) for i, e in enumerate(pool)]
 
 
 def _compute_reward(email: Email, action: Action, task_name: TaskName) -> float:
     reward = 0.0
+
     if action.classification == email.true_label:
         reward += 1.0
+
     if task_name in {"medium", "hard"} and action.risk_level == email.true_risk:
         reward += 1.0
-    if task_name == "hard" and action.decision == email.correct_decision:
-        reward += 1.0
-        # Extra penalty for missing high-risk emails
+
+    if task_name == "hard":
+        if action.decision == email.correct_decision:
+            reward += 1.0
+
         if email.true_risk == "high" and action.decision == "pass":
             reward -= 1.5
+
     return reward
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# App
+# App lifecycle
 # ─────────────────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -100,7 +98,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Financial Email OpenEnv",
-    description="RL environment for financial email triage — classify, assess risk, and decide.",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -120,7 +117,7 @@ class ResetRequest(BaseModel):
     task_name: TaskName = "hard"
     num_emails: int = 5
 
-    model_config = {"extra": "ignore"}  # ignore unknown fields from checker
+    model_config = {"extra": "ignore"}
 
 
 class StepRequest(BaseModel):
@@ -133,25 +130,25 @@ class GradeRequest(BaseModel):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Endpoints
+# Routes
 # ─────────────────────────────────────────────────────────────────────────────
-@app.get("/", tags=["Health"])
+@app.get("/")
 def root():
     return {"status": "running"}
 
 
-@app.get("/tasks", tags=["Tasks"])
+@app.get("/tasks")
 def list_tasks():
-    """List all available tasks with descriptions and examples."""
     return [t.model_dump() for t in TASKS]
 
 
-@app.post("/reset", response_model=Observation, tags=["Environment"])
+@app.post("/reset", response_model=Observation)
 def reset(req: Optional[ResetRequest] = Body(default=None)):
-    """Reset the environment and return the first observation."""
     if req is None:
         req = ResetRequest()
+
     emails = _build_emails(req.num_emails)
+
     env_state.clear()
     env_state.update({
         "task_name": req.task_name,
@@ -162,62 +159,65 @@ def reset(req: Optional[ResetRequest] = Body(default=None)):
         "history": [],
         "done": False,
     })
+
     first_email = emails[0]
+
     return Observation(
         current_email=first_email,
-        trust_score=env_state["trust_scores"][str(first_email.id)],
+        trust_score=1.0,
         step_count=0,
         task_name=req.task_name,
     )
 
 
-@app.post("/step", response_model=StepResult, tags=["Environment"])
+@app.post("/step", response_model=StepResult)
 def step(req: StepRequest):
-    """Take one action on the current email and advance the environment."""
     if not env_state:
-        raise HTTPException(status_code=400, detail="Environment not initialised. Call /reset first.")
+        raise HTTPException(400, "Call /reset first")
+
     if env_state["done"]:
-        raise HTTPException(status_code=400, detail="Episode is done. Call /reset to start a new one.")
+        raise HTTPException(400, "Episode finished. Reset required")
 
-    task_name: TaskName = env_state["task_name"]
-    emails: list[Email] = env_state["emails"]
-    idx: int = env_state["current_index"]
-    action = req.action
-
-    # Validate required fields per task
-    required = TASK_REQUIRED_FIELDS[task_name]
-    missing = [f for f in required if getattr(action, f.replace("_level", "").replace("risk", "risk_level"), None) is None]
+    task_name = env_state["task_name"]
+    emails = env_state["emails"]
+    idx = env_state["current_index"]
 
     current_email = emails[idx]
+    action = req.action
 
-    # Score the action
+    # Validation
+    required = TASK_REQUIRED_FIELDS[task_name]
+    missing = [f for f in required if getattr(action, f, None) is None]
+
+    if missing:
+        raise HTTPException(400, f"Missing required fields: {missing}")
+
+    # Scoring
     classification_correct = action.classification == current_email.true_label
-    risk_correct = action.risk_level == current_email.true_risk if task_name in {"medium", "hard"} else None
+    risk_correct = action.risk_level == current_email.true_risk if task_name != "easy" else None
     decision_correct = action.decision == current_email.correct_decision if task_name == "hard" else None
 
     reward = _compute_reward(current_email, action, task_name)
     env_state["total_reward"] += reward
 
-    # Update trust score
-    trust_delta = 0.05 if classification_correct else -0.05
-    old_trust = env_state["trust_scores"][str(current_email.id)]
-    new_trust = max(0.0, min(1.0, old_trust + trust_delta))
-    env_state["trust_scores"][str(current_email.id)] = new_trust
+    # Trust update
+    trust = env_state["trust_scores"][str(current_email.id)]
+    trust += 0.05 if classification_correct else -0.05
+    trust = max(0.0, min(1.0, trust))
+    env_state["trust_scores"][str(current_email.id)] = trust
 
-    # Record history for grading
+    # History
     env_state["history"].append({
         "email_id": current_email.id,
         "classification_correct": classification_correct,
         "risk_correct": bool(risk_correct) if risk_correct is not None else False,
         "decision_correct": bool(decision_correct) if decision_correct is not None else False,
-        "predicted_risk_level": action.risk_level,
-        "effective_risk": current_email.true_risk,
-        "predicted_decision": action.decision,
     })
 
-    # Advance
+    # Move forward
     next_index = idx + 1
     done = next_index >= len(emails)
+
     env_state["current_index"] = next_index
     env_state["done"] = done
 
@@ -235,45 +235,35 @@ def step(req: StepRequest):
         observation=next_obs,
         reward=reward,
         done=done,
-        info={
-            "classification_correct": classification_correct,
-            "risk_correct": risk_correct,
-            "decision_correct": decision_correct,
-            "total_reward": env_state["total_reward"],
-            "email_id": current_email.id,
-        },
+        info={"total_reward": env_state["total_reward"]},
     )
 
 
-@app.get("/state", tags=["Environment"])
-def get_state():
-    """Return the full current environment state."""
-    if not env_state:
-        raise HTTPException(status_code=400, detail="Environment not initialised. Call /reset first.")
-    return {
-        "task_name": env_state["task_name"],
-        "current_index": env_state["current_index"],
-        "total_emails": len(env_state["emails"]),
-        "total_reward": env_state["total_reward"],
-        "done": env_state["done"],
-        "trust_scores": env_state["trust_scores"],
-    }
-
-
-@app.post("/grade", tags=["Grading"])
+@app.post("/grade")
 def grade_episode(req: GradeRequest):
-    """Grade a completed episode history."""
-    if not req.history:
-        # Use in-memory history if available
-        if env_state.get("history"):
-            return grade(req.task_name, env_state["history"])
-        raise HTTPException(status_code=400, detail="No history provided and no active episode.")
+    if not req.history and env_state.get("history"):
+        return grade(req.task_name, env_state["history"])
+
     return grade(req.task_name, req.history)
 
 
-@app.get("/grade/current", tags=["Grading"])
-def grade_current():
-    """Grade the current in-progress or completed episode."""
-    if not env_state or not env_state.get("history"):
-        raise HTTPException(status_code=400, detail="No active episode history to grade.")
-    return grade(env_state["task_name"], env_state["history"])
+@app.get("/state")
+def state():
+    return env_state
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ENTRY POINT (REQUIRED FOR DEPLOYMENT)
+# ─────────────────────────────────────────────────────────────────────────────
+def main():
+    import uvicorn
+    uvicorn.run(
+        "server.app:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=False
+    )
+
+
+if __name__ == "__main__":
+    main()
