@@ -1,13 +1,20 @@
 from __future__ import annotations
+import json
 import os, sys
 sys.path.insert(0, os.path.dirname(__file__))
-from models import LabelType, RiskType, DecisionType
 from grader import grade
 
 SPAM_KEYWORDS   = {"won","gift","prize","claim","lottery","guaranteed","double","free","offer","selected","congratulations","pre-approved","limited time"}
 URGENT_KEYWORDS = {"urgent","alert","immediate","action required","down","failing","unauthorized","security","verify","critical","breach","suspend"}
 HIGH_RISK_WORDS = {"wire transfer","overseas","unauthorized","ssn","bank details","phishing","fraud","critical","production down","security alert"}
 MEDIUM_RISK_WORDS = {"overdue","due","compliance","kyc","audit","re-submit","invoice","legal action","approved loan","application"}
+SAMPLE_EMAILS = [
+    {"subject":"Wire Transfer of $47,500 Initiated","sender":"alerts@bank.com","content":"A wire transfer to an overseas account was initiated. Confirm or deny.","true_label":"urgent","true_risk":"high","correct_decision":"escalate"},
+    {"subject":"You won a $1000 gift card!","sender":"promo@spam.com","content":"Click here to claim your free reward before it expires!","true_label":"spam","true_risk":"high","correct_decision":"block"},
+    {"subject":"Invoice #INV-4521 Payment Due","sender":"billing@vendor.com","content":"Please find attached invoice for $3,200. Payment due in 15 days.","true_label":"finance","true_risk":"medium","correct_decision":"review"},
+    {"subject":"March Salary Credited","sender":"hr@company.com","content":"Your salary of $5,400 has been processed successfully.","true_label":"finance","true_risk":"low","correct_decision":"pass"},
+    {"subject":"URGENT: Production DB is down","sender":"ops@company.com","content":"All services are failing. Immediate action required.","true_label":"urgent","true_risk":"high","correct_decision":"escalate"},
+]
 
 def _text(email: dict) -> str:
     return f"{email.get('subject','')} {email.get('content','')} {email.get('sender','')}".lower()
@@ -54,11 +61,57 @@ def run_inference(emails: list[dict], task_name: str = "hard") -> dict:
         })
     return grade(task_name, history)
 
+def _step_reward(email: dict, pred: dict, task_name: str) -> float:
+    reward = 0.0
+
+    if pred.get("classification") == email.get("true_label"):
+        reward += 0.2
+    else:
+        reward -= 0.1
+
+    if task_name in {"medium", "hard"}:
+        if pred.get("risk_level") == email.get("true_risk"):
+            reward += 0.3
+        else:
+            reward -= 0.2
+
+    if task_name == "hard":
+        if pred.get("decision") == email.get("correct_decision"):
+            reward += 0.5
+        else:
+            reward -= 0.5
+
+    return reward
+
+def _load_emails_from_input() -> list[dict]:
+    if len(sys.argv) > 1 and os.path.exists(sys.argv[1]):
+        with open(sys.argv[1], "r", encoding="utf-8") as f:
+            payload = json.load(f)
+            return payload.get("emails", payload) if isinstance(payload, dict) else payload
+
+    if not sys.stdin.isatty():
+        raw = sys.stdin.read().strip()
+        if raw:
+            payload = json.loads(raw)
+            return payload.get("emails", payload) if isinstance(payload, dict) else payload
+
+    return SAMPLE_EMAILS
+
 if __name__ == "__main__":
-    import json
-    test = [
-        {"subject":"Wire Transfer $47,500","sender":"alerts@bank.com","content":"overseas account transfer","true_label":"urgent","true_risk":"high","correct_decision":"escalate"},
-        {"subject":"You won a gift card!","sender":"spam@promo.com","content":"claim your free reward","true_label":"spam","true_risk":"high","correct_decision":"block"},
-        {"subject":"Salary Credited","sender":"hr@company.com","content":"salary processed successfully","true_label":"finance","true_risk":"low","correct_decision":"pass"},
-    ]
-    print(json.dumps(run_inference(test, "hard"), indent=2))
+    task_name = os.getenv("TASK_NAME", "hard").strip().lower()
+    if task_name not in {"easy", "medium", "hard"}:
+        task_name = "hard"
+
+    emails = _load_emails_from_input()
+
+    print(f"[START] task={task_name}", flush=True)
+    for idx, email in enumerate(emails, start=1):
+        pred = predict(email, task_name)
+        reward = _step_reward(email, pred, task_name)
+        print(f"[STEP] step={idx} reward={reward:.3f}", flush=True)
+
+    result = run_inference(emails, task_name)
+    print(
+        f"[END] task={task_name} score={float(result.get('score', 0.0)):.3f} steps={len(emails)}",
+        flush=True,
+    )
