@@ -173,88 +173,93 @@ def _touch_litellm_proxy() -> None:
 
 
 if __name__ == "__main__":
-    task_name = _normalize_task_name(os.getenv("TASK_NAME", "hard"))
-    print(f"[START] task={task_name} env={BENCHMARK} model={MODEL_NAME}", flush=True)
-
-    history: list[dict] = []
-    step_count = 0
-    score = 0.0
-    rewards: list[float] = []
-    success = False
+    _touch_litellm_proxy()
 
     try:
-        _touch_litellm_proxy()
+        base_emails = _load_emails_from_input()
+    except Exception:
+        base_emails = list(SAMPLE_EMAILS)
+
+    if not base_emails:
+        base_emails = list(SAMPLE_EMAILS)
+    if not base_emails:
+        base_emails = [{}]
+
+    # Always run all 3 tasks to satisfy Phase 2 task+grader checks.
+    tasks_to_run = ["easy", "medium", "hard"]
+
+    for task_name in tasks_to_run:
+        print(f"[START] task={task_name} env={BENCHMARK} model={MODEL_NAME}", flush=True)
+
+        history: list[dict] = []
+        step_count = 0
+        score = 0.0
+        rewards: list[float] = []
+        success = False
+
         try:
-            emails = _load_emails_from_input()
-        except Exception:
-            emails = list(SAMPLE_EMAILS)
+            emails = list(base_emails)
+            for step, email in enumerate(emails, start=1):
+                step_count = step
+                reward = 0.0
+                action_str = "noop"
+                done = False
+                error_msg = "null"
+                try:
+                    pred = predict(email, task_name)
+                    reward = _step_reward(email, pred, task_name)
+                    action_str = (
+                        f"classification={pred.get('classification')};"
+                        f"risk_level={pred.get('risk_level')};"
+                        f"decision={pred.get('decision')}"
+                    )
+                    history.append(
+                        {
+                            "classification_correct": pred.get("classification") == email.get("true_label"),
+                            "risk_correct": pred.get("risk_level") == email.get("true_risk"),
+                            "decision_correct": pred.get("decision") == email.get("correct_decision"),
+                            "predicted_risk_level": pred.get("risk_level"),
+                            "effective_risk": email.get("true_risk"),
+                            "predicted_decision": pred.get("decision"),
+                        }
+                    )
+                except Exception:
+                    error_msg = "prediction_error"
+                    history.append(
+                        {
+                            "classification_correct": False,
+                            "risk_correct": False,
+                            "decision_correct": False,
+                            "predicted_risk_level": None,
+                            "effective_risk": email.get("true_risk"),
+                            "predicted_decision": None,
+                        }
+                    )
+                done = step == len(emails)
+                rewards.append(reward)
+                print(
+                    f"[STEP] step={step} action={action_str} reward={reward:.2f} "
+                    f"done={str(done).lower()} error={error_msg}",
+                    flush=True,
+                )
 
-        if not emails:
-            emails = list(SAMPLE_EMAILS)
-        if not emails:
-            emails = [{}]
-
-        for step, email in enumerate(emails, start=1):
-            step_count = step
-            reward = 0.0
-            action_str = "noop"
-            done = False
-            error_msg = "null"
             try:
-                pred = predict(email, task_name)
-                reward = _step_reward(email, pred, task_name)
-                action_str = (
-                    f"classification={pred.get('classification')};"
-                    f"risk_level={pred.get('risk_level')};"
-                    f"decision={pred.get('decision')}"
-                )
-                history.append(
-                    {
-                        "classification_correct": pred.get("classification") == email.get("true_label"),
-                        "risk_correct": pred.get("risk_level") == email.get("true_risk"),
-                        "decision_correct": pred.get("decision") == email.get("correct_decision"),
-                        "predicted_risk_level": pred.get("risk_level"),
-                        "effective_risk": email.get("true_risk"),
-                        "predicted_decision": pred.get("decision"),
-                    }
-                )
+                score = float(grade(task_name, history).get("score", 0.0))
+                success = True
             except Exception:
-                error_msg = "prediction_error"
-                history.append(
-                    {
-                        "classification_correct": False,
-                        "risk_correct": False,
-                        "decision_correct": False,
-                        "predicted_risk_level": None,
-                        "effective_risk": email.get("true_risk"),
-                        "predicted_decision": None,
-                    }
+                score = 0.0
+                success = False
+        finally:
+            if step_count == 0:
+                step_count = 1
+                rewards = [0.0]
+                print(
+                    "[STEP] step=1 action=noop reward=0.00 done=true error=null",
+                    flush=True,
                 )
-            done = step == len(emails)
-            rewards.append(reward)
+            rewards_str = ",".join(f"{r:.2f}" for r in rewards) if rewards else "0.00"
             print(
-                f"[STEP] step={step} action={action_str} reward={reward:.2f} "
-                f"done={str(done).lower()} error={error_msg}",
+                f"[END] success={str(success).lower()} steps={step_count} "
+                f"score={score:.2f} rewards={rewards_str}",
                 flush=True,
             )
-
-        try:
-            score = float(grade(task_name, history).get("score", 0.0))
-            success = True
-        except Exception:
-            score = 0.0
-            success = False
-    finally:
-        if step_count == 0:
-            step_count = 1
-            rewards = [0.0]
-            print(
-                "[STEP] step=1 action=noop reward=0.00 done=true error=null",
-                flush=True,
-            )
-        rewards_str = ",".join(f"{r:.2f}" for r in rewards) if rewards else "0.00"
-        print(
-            f"[END] success={str(success).lower()} steps={step_count} "
-            f"score={score:.2f} rewards={rewards_str}",
-            flush=True,
-        )
