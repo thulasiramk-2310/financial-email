@@ -13,7 +13,9 @@ except Exception:
 # Required env-style configuration for validator/sample parity.
 API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o-mini")
-API_KEY = os.getenv("API_KEY")
+HF_TOKEN = os.getenv("HF_TOKEN")
+API_KEY = HF_TOKEN or os.getenv("API_KEY")
+BENCHMARK = os.getenv("BENCHMARK", "financial-email-risk-env")
 # Optional when using from_docker_image() workflows.
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
 
@@ -172,11 +174,13 @@ def _touch_litellm_proxy() -> None:
 
 if __name__ == "__main__":
     task_name = _normalize_task_name(os.getenv("TASK_NAME", "hard"))
-    print(f"[START] task={task_name}", flush=True)
+    print(f"[START] task={task_name} env={BENCHMARK} model={MODEL_NAME}", flush=True)
 
     history: list[dict] = []
     step_count = 0
     score = 0.0
+    rewards: list[float] = []
+    success = False
 
     try:
         _touch_litellm_proxy()
@@ -193,9 +197,17 @@ if __name__ == "__main__":
         for step, email in enumerate(emails, start=1):
             step_count = step
             reward = 0.0
+            action_str = "noop"
+            done = False
+            error_msg = "null"
             try:
                 pred = predict(email, task_name)
                 reward = _step_reward(email, pred, task_name)
+                action_str = (
+                    f"classification={pred.get('classification')};"
+                    f"risk_level={pred.get('risk_level')};"
+                    f"decision={pred.get('decision')}"
+                )
                 history.append(
                     {
                         "classification_correct": pred.get("classification") == email.get("true_label"),
@@ -207,6 +219,7 @@ if __name__ == "__main__":
                     }
                 )
             except Exception:
+                error_msg = "prediction_error"
                 history.append(
                     {
                         "classification_correct": False,
@@ -217,14 +230,31 @@ if __name__ == "__main__":
                         "predicted_decision": None,
                     }
                 )
-            print(f"[STEP] step={step} reward={reward:.3f}", flush=True)
+            done = step == len(emails)
+            rewards.append(reward)
+            print(
+                f"[STEP] step={step} action={action_str} reward={reward:.2f} "
+                f"done={str(done).lower()} error={error_msg}",
+                flush=True,
+            )
 
         try:
             score = float(grade(task_name, history).get("score", 0.0))
+            success = True
         except Exception:
             score = 0.0
+            success = False
     finally:
         if step_count == 0:
             step_count = 1
-            print("[STEP] step=1 reward=0.000", flush=True)
-        print(f"[END] task={task_name} score={score:.3f} steps={step_count}", flush=True)
+            rewards = [0.0]
+            print(
+                "[STEP] step=1 action=noop reward=0.00 done=true error=null",
+                flush=True,
+            )
+        rewards_str = ",".join(f"{r:.2f}" for r in rewards) if rewards else "0.00"
+        print(
+            f"[END] success={str(success).lower()} steps={step_count} "
+            f"score={score:.2f} rewards={rewards_str}",
+            flush=True,
+        )
