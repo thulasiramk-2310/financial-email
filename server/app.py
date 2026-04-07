@@ -17,6 +17,7 @@ from models import (
 )
 from tasks import TASKS, TASK_REQUIRED_FIELDS
 from grader import grade
+from baseline import classify as baseline_classify, assess_risk as baseline_assess_risk, decide as baseline_decide
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -142,6 +143,11 @@ def list_tasks():
     return [t.model_dump() for t in TASKS]
 
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
 @app.post("/reset", response_model=Observation)
 def reset(req: Optional[ResetRequest] = Body(default=None)):
     if req is None:
@@ -245,6 +251,47 @@ def grade_episode(req: GradeRequest):
         return grade(req.task_name, env_state["history"])
 
     return grade(req.task_name, req.history)
+
+
+@app.get("/grade/current")
+def grade_current():
+    task_name = env_state.get("task_name", "hard") if env_state else "hard"
+    history = env_state.get("history", []) if env_state else []
+    return grade(task_name, history)
+
+
+@app.get("/grader")
+def grader_current():
+    return grade_current()
+
+
+@app.get("/baseline")
+def baseline_run():
+    # Deterministic baseline over current episode emails if available; otherwise fixed sample set.
+    task_name: TaskName = env_state.get("task_name", "hard")
+    emails: list[Email] = env_state.get("emails") or [Email(id=i, **e) for i, e in enumerate(SAMPLE_EMAILS[:5])]
+    history: list[dict[str, Any]] = []
+
+    for email in emails:
+        cls = baseline_classify(email.model_dump())
+        risk = baseline_assess_risk(email.model_dump(), cls) if task_name in {"medium", "hard"} else None
+        dec = baseline_decide(cls, risk or "low") if task_name == "hard" else None
+        history.append(
+            {
+                "classification_correct": cls == email.true_label,
+                "risk_correct": risk == email.true_risk,
+                "decision_correct": dec == email.correct_decision,
+                "predicted_risk_level": risk,
+                "effective_risk": email.true_risk,
+                "predicted_decision": dec,
+            }
+        )
+
+    return {
+        "task_name": task_name,
+        "evaluated": len(history),
+        "grade": grade(task_name, history),
+    }
 
 
 @app.get("/state")

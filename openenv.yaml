@@ -27,6 +27,12 @@ endpoints:
   - path: /baseline
     method: GET
     description: Run baseline policy across all tasks.
+  - path: /health
+    method: GET
+    description: Liveness probe for deployment checks.
+  - path: /grade/current
+    method: GET
+    description: Return grade for current in-memory episode history.
 action_schema:
   type: object
   required: [action_type]
@@ -42,7 +48,7 @@ action_schema:
       enum: [low, medium, high]
     decision:
       type: string
-      enum: [approve, reject, escalate]
+      enum: [block, escalate, review, pass]
 observation_schema:
   type: object
   properties:

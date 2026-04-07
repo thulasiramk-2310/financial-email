@@ -28,6 +28,20 @@ This environment benchmarks an agent's ability to:
 - Trust-aware behavior modeling by sender
 - Clean API for agent integration and hackathon demos
 
+## Originality & Design Decisions
+
+This project was implemented as an original environment for the hackathon workflow, with custom task structure, scoring, and baseline behavior.
+
+Design choices made in this repo:
+- Three-tier task progression (`easy`, `medium`, `hard`) with increasing action complexity
+- Cost-sensitive grader with stronger penalties for dangerous false negatives
+- Rule-based baseline policy built specifically for financial email triage signals
+- Deterministic API behavior and reproducible grading outputs for fair comparisons
+
+Attribution note:
+- General concepts and API patterns follow OpenEnv/FastAPI ecosystem documentation
+- Environment logic, task content, and grading rules are authored for this project
+
 ## Architecture
 
 - `models.py` - Pydantic request/response/state contracts
