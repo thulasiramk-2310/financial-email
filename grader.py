@@ -7,6 +7,13 @@ def _clamp_score(value: float) -> float:
     return max(0.0, min(value, 1.0))
 
 
+def _strict_open_score(value: float, floor: float = 0.01, ceiling: float = 0.99) -> float:
+    """
+    Keep final task score strictly inside (0, 1) for validator requirements.
+    """
+    return max(floor, min(value, ceiling))
+
+
 def _field_accuracy(history: list[dict[str, Any]], key: str) -> float:
     """Proportion of rows where a boolean field is True."""
     if not history:
@@ -81,7 +88,7 @@ def grade(task_name: TaskName, history: list[dict[str, Any]]) -> dict[str, Any]:
         # Classification only — penalise false negatives (missed urgent/fraud)
         raw_score = classification_acc
         penalty = _fn_penalty(false_negatives, total, weight=0.20)
-        score = _clamp_score(raw_score - penalty)
+        score = _strict_open_score(_clamp_score(raw_score - penalty))
 
     elif task_name == "medium":
         # Classification + risk — weighted 40 / 60 (risk matters more here)
@@ -90,7 +97,7 @@ def grade(task_name: TaskName, history: list[dict[str, Any]]) -> dict[str, Any]:
             _fn_penalty(false_negatives, total, weight=0.25)
             + _fp_penalty(false_positives, total, weight=0.10)
         )
-        score = _clamp_score(raw_score - penalty)
+        score = _strict_open_score(_clamp_score(raw_score - penalty))
 
     elif task_name == "hard":
         # Full pipeline — classification 25%, risk 35%, decision 40%
@@ -103,7 +110,7 @@ def grade(task_name: TaskName, history: list[dict[str, Any]]) -> dict[str, Any]:
             _fn_penalty(false_negatives, total, weight=0.30)
             + _fp_penalty(false_positives, total, weight=0.10)
         )
-        score = _clamp_score(raw_score - penalty)
+        score = _strict_open_score(_clamp_score(raw_score - penalty))
 
     else:
         raise ValueError(f"Unknown task_name: {task_name!r}")
