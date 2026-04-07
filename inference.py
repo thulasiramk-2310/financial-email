@@ -5,6 +5,26 @@ import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 from grader import grade
+try:
+    from openai import OpenAI
+except Exception:
+    OpenAI = None
+
+# Required env-style configuration for validator/sample parity.
+API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
+MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o-mini")
+HF_TOKEN = os.getenv("HF_TOKEN")
+# Optional when using from_docker_image() workflows.
+LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
+
+# Client is configured from env vars; this project's inference path is rule-based
+# and does not require external API calls during local/validator execution.
+OPENAI_CLIENT = None
+if OpenAI is not None and HF_TOKEN:
+    try:
+        OPENAI_CLIENT = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
+    except Exception:
+        OPENAI_CLIENT = None
 
 SPAM_KEYWORDS = {"won", "gift", "prize", "claim", "lottery", "guaranteed", "double", "free", "offer", "selected", "congratulations", "pre-approved", "limited time"}
 URGENT_KEYWORDS = {"urgent", "alert", "immediate", "action required", "down", "failing", "unauthorized", "security", "verify", "critical", "breach", "suspend"}
