@@ -14,7 +14,7 @@ except Exception:
 API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o-mini")
 HF_TOKEN = os.getenv("HF_TOKEN")
-API_KEY = HF_TOKEN or os.getenv("API_KEY")
+API_KEY = HF_TOKEN
 BENCHMARK = os.getenv("BENCHMARK", "financial-email-risk-env")
 # Optional when using from_docker_image() workflows.
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
@@ -153,13 +153,15 @@ def _load_emails_from_input() -> list[dict]:
 
     return list(SAMPLE_EMAILS)
 
-def _touch_litellm_proxy() -> None:
+def _touch_litellm_proxy() -> str:
     """
     Best-effort proxy call required by Phase 2 validator.
     Uses only injected API_BASE_URL/API_KEY and never hardcoded credentials.
     """
+    if HF_TOKEN is None:
+        return "missing_hf_token"
     if OPENAI_CLIENT is None:
-        return
+        return "openai_client_unavailable"
     try:
         OPENAI_CLIENT.chat.completions.create(
             model=MODEL_NAME,
@@ -167,13 +169,14 @@ def _touch_litellm_proxy() -> None:
             max_tokens=1,
             temperature=0,
         )
+        return "null"
     except Exception:
         # Keep inference resilient even if proxy/model is temporarily unavailable.
-        pass
+        return "proxy_call_failed"
 
 
 if __name__ == "__main__":
-    _touch_litellm_proxy()
+    proxy_error = _touch_litellm_proxy()
 
     try:
         base_emails = _load_emails_from_input()
@@ -193,7 +196,6 @@ if __name__ == "__main__":
 
         history: list[dict] = []
         step_count = 0
-        score = 0.0
         rewards: list[float] = []
         success = False
 
@@ -204,7 +206,7 @@ if __name__ == "__main__":
                 reward = 0.0
                 action_str = "noop"
                 done = False
-                error_msg = "null"
+                error_msg = proxy_error
                 try:
                     pred = predict(email, task_name)
                     reward = _step_reward(email, pred, task_name)
@@ -244,10 +246,9 @@ if __name__ == "__main__":
                 )
 
             try:
-                score = float(grade(task_name, history).get("score", 0.0))
-                success = True
+                _ = float(grade(task_name, history).get("score", 0.0))
+                success = proxy_error == "null"
             except Exception:
-                score = 0.0
                 success = False
         finally:
             if step_count == 0:
@@ -260,6 +261,6 @@ if __name__ == "__main__":
             rewards_str = ",".join(f"{r:.2f}" for r in rewards) if rewards else "0.00"
             print(
                 f"[END] success={str(success).lower()} steps={step_count} "
-                f"score={score:.2f} rewards={rewards_str}",
+                f"rewards={rewards_str}",
                 flush=True,
             )
